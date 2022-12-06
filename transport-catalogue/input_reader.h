@@ -1,28 +1,27 @@
 #pragma once
 
-#include <iostream>
-#include <string>
-#include <vector>
-#include <unordered_map>
+#include <map>
 
 using namespace std;
 
-enum class QueryType {
-    NewBus,
-    NewStop
-};
-
-struct Query {
-    QueryType type;
-    string stop_name;
-    string bus_name;
+struct Bus {
+    string name;
+    bool is_round = false;
     vector<string> stops;
-    double latitude;
-    double longitude;
-    bool is_round;
-    unordered_map<string, int> range_to_close_stop;
 };
 
-istream& operator>>(istream& is, Query& q);
+struct Stop {
+    string name;
+    double latitude = 0.0;
+    double longitude = 0.0;
+};
 
-vector<Query> BuildDataBase();
+struct Querys {
+    vector<Stop> stops;
+    vector<Bus> buses;
+    map<pair<string, string>, int> range_about_stops;
+};
+
+istream& operator>>(istream& is, Querys& q);
+
+Querys BuildDataBase();
