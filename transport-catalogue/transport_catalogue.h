@@ -1,43 +1,57 @@
 #pragma once
 
+#include <deque>
+#include <string>
+#include <vector>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include <iomanip>
-#include <algorithm>
-#include <set>
-#include "geo.h"
+
 #include "input_reader.h"
+#include "geo.h"
+
+using namespace std;
 
 class TransportCatalogue {
-    public:
-    
-    TransportCatalogue(vector<Query>& q_data);
-    
-    int StopsCountInRoute(int num);
-    
-    int UniqStopsCountInRoute(int num);
-    
-    pair<int, double> ComputeRouteRange(int num);
-    
-    void PrintBusInfo(string route_number);
-    
-    void PrintStopInfo(string stop);
-    
-    private:
-    
-    struct RouteStats {
-        vector<string> stops_;
-        bool is_round;
-    };
-    
-    struct StopsStats {
+public:
+    TransportCatalogue(Querys data_base);
+
+    void AddStop(Stop stop);
+    void AddBus(Bus bus);
+
+    tuple<int, int, int, double> GetBusInfo(string& bus);
+    set<string> GetStopInfo(string& stop);
+
+    int StopsCountInRoute(string& bus);
+    int UniqStopsCountInRoute(string& bus);
+    int ComputeMeterRouteLenght(string& bus);
+    double ComputeCoordRouteLenght(string& bus);
+
+private:
+    struct StopInfo {
+        StopInfo(Stop stop) :
+            name_(stop.name) {
+            coord.lat = stop.latitude;
+            coord.lng = stop.longitude;
+        }
+
+        string name_;
         Coordinates coord;
-        unordered_set<string> routes_for_stop;
-        unordered_map<string, int> range_to_close_stop_;
     };
-    
-    RouteStats stats_;
-    vector<string> routes;
-    vector<RouteStats> stops_in_route;
-    unordered_map<string, StopsStats> all_stops_info;
+
+    struct RouteInfo {
+        RouteInfo(Bus bus) :
+            name_(bus.name), is_round_(bus.is_round) {
+        }
+
+        string name_;
+        bool is_round_;
+        deque<StopInfo*> stops_;
+    };
+
+    deque<StopInfo> stops_;
+    unordered_map<string_view, StopInfo*> stops;
+    deque<RouteInfo> routes_;
+    unordered_map<string_view, RouteInfo*> routes;
+    map<pair<string, string>, int> range_about_stops;
 };
