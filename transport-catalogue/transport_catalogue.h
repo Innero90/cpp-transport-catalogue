@@ -1,57 +1,132 @@
-#pragma once
+#include "transport_catalogue.h"
 
-#include <deque>
-#include <string>
-#include <vector>
-#include <set>
-#include <unordered_map>
-#include <unordered_set>
+TransportCatalogue::TransportCatalogue(Querys data_base) {
+    for (auto& stop : data_base.stops) {
+        AddStop(stop);
+    }
+    for (auto& bus : data_base.buses) {
+        AddBus(bus);
+    }
+    for (auto& stops : data_base.range_about_stops) {
+        range_about_stops.insert(move(stops));
+    }
+}
 
-#include "input_reader.h"
-#include "geo.h"
+void TransportCatalogue::AddStop(Stop stop) {
+    StopInfo stop_(move(stop));
+    stops_.push_back(move(stop_));
+    string_view name = stops_.back().name_;
+    stops[name] = &stops_.back();
+}
 
-using namespace std;
+void TransportCatalogue::AddBus(Bus bus) {
+    RouteInfo route_info(bus);
+    for (auto& stop : bus.stops) {
+        route_info.stops_.push_back(stops[stop]);
+    }
+    routes_.push_back(move(route_info));
+    string_view name = routes_.back().name_;
+    routes[name] = &routes_.back();
+}
 
-class TransportCatalogue {
-public:
-    TransportCatalogue(Querys data_base);
+tuple<int, int, int, double> TransportCatalogue::GetBusInfo(string& bus) {
+    if (routes.find(bus) != routes.end()) {
+        int stops_count = StopsCountInRoute(bus);
+        int uniq_stops_count = UniqStopsCountInRoute(bus);
+        int m_route_lenght = ComputeMeterRouteLenght(bus);
+        double coord_route_lenght = ComputeCoordRouteLenght(bus);
+        return tuple(stops_count, uniq_stops_count, m_route_lenght, m_route_lenght / coord_route_lenght);
+    }
+    else {
+        return tuple{ 0, 0, 0, 0.0 };
+    }
+}
 
-    void AddStop(Stop stop);
-    void AddBus(Bus bus);
-
-    tuple<int, int, int, double> GetBusInfo(string& bus);
-    set<string> GetStopInfo(string& stop);
-
-    int StopsCountInRoute(string& bus);
-    int UniqStopsCountInRoute(string& bus);
-    int ComputeMeterRouteLenght(string& bus);
-    double ComputeCoordRouteLenght(string& bus);
-
-private:
-    struct StopInfo {
-        StopInfo(Stop stop) :
-            name_(stop.name) {
-            coord.lat = stop.latitude;
-            coord.lng = stop.longitude;
+set<string> TransportCatalogue::GetStopInfo(string& stop) {
+    set<string> result;
+    if (!stops.count(stop)) {
+        result.insert("not found"s);
+        return result;
+    } else {
+        for (auto& route : routes_) {
+            for (auto& stop_ : route.stops_) {
+                if (stop_->name_ == stop) {
+                    result.insert(route.name_);
+                }
+            }
         }
+    }
+    if (result.empty()) {
+        result.insert("no buses"s);
+        return result;
+    }
+    return result;
+}
 
-        string name_;
-        Coordinates coord;
-    };
+int TransportCatalogue::StopsCountInRoute(string& bus) {
+    auto route = *routes[bus];
+    if (route.is_round_) {
+        return route.stops_.size();
+    }
+    else {
+        return route.stops_.size() * 2 - 1;
+    }
+}
 
-    struct RouteInfo {
-        RouteInfo(Bus bus) :
-            name_(bus.name), is_round_(bus.is_round) {
+int TransportCatalogue::UniqStopsCountInRoute(string& bus) {
+    auto route = *routes[bus];
+    unordered_set<StopInfo*> result;
+    for (const auto& stop : route.stops_) {
+        result.insert(stop);
+    }
+    return result.size();
+}
+
+int TransportCatalogue::ComputeMeterRouteLenght(string& bus) {
+    auto route = *routes[bus];
+    int result = 0;
+    if (route.is_round_) {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            if (range_about_stops.count({ route.stops_[i]->name_, route.stops_[i + 1]->name_ })) {
+                result += range_about_stops.at({ route.stops_[i]->name_, route.stops_[i + 1]->name_ });
+            } else {
+                result += range_about_stops.at({ route.stops_[i + 1]->name_, route.stops_[i]->name_ });
+            }
         }
+    } else {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            if (range_about_stops.count({ route.stops_[i]->name_, route.stops_[i + 1]->name_ })) {
+                result += range_about_stops.at({ route.stops_[i]->name_, route.stops_[i + 1]->name_ });
+            } else {
+                result += range_about_stops.at({ route.stops_[i + 1]->name_, route.stops_[i]->name_ });
+            }
+        }
+        for (size_t i = route.stops_.size() - 1; i > 0; --i) {
+            if (range_about_stops.count({ route.stops_[i]->name_, route.stops_[i - 1]->name_ })) {
+                result += range_about_stops.at({ route.stops_[i]->name_, route.stops_[i - 1]->name_ });
+            } else {
+                result += range_about_stops.at({ route.stops_[i - 1]->name_, route.stops_[i]->name_ });
+            }
+        }
+    }
+    return result;
+}
 
-        string name_;
-        bool is_round_;
-        deque<StopInfo*> stops_;
-    };
-
-    deque<StopInfo> stops_;
-    unordered_map<string_view, StopInfo*> stops;
-    deque<RouteInfo> routes_;
-    unordered_map<string_view, RouteInfo*> routes;
-    map<pair<string, string>, int> range_about_stops;
-};
+double TransportCatalogue::ComputeCoordRouteLenght(string& bus) {
+    auto route = *routes[bus];
+    double result = 0;
+    if (route.is_round_) {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            result += ComputeDistance(route.stops_[i]->coord, route.stops_[i + 1]->coord);
+        }
+    }
+    else {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            result += ComputeDistance(route.stops_[i]->coord, route.stops_[i + 1]->coord);
+        }
+        for (size_t i = route.stops_.size() - 1; i > 0; --i) {
+            result += ComputeDistance(route.stops_[i]->coord, route.stops_[i - 1]->coord);
+        }
+    }
+    return result;
+}
