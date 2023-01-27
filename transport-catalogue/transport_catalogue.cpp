@@ -1,110 +1,132 @@
 #include "transport_catalogue.h"
 
-TransportCatalogue::TransportCatalogue(vector<Query>& q_data) {
-    for(auto q : q_data) {
-        switch (q.type) {
-            case QueryType::NewBus:
-                routes.push_back(q.bus_name);
-                stats_.stops_ = q.stops;
-                stats_.is_round = q.is_round;
-                stops_in_route.push_back(stats_);
-                for(auto stop : q.stops) {
-                    all_stops_info[stop].routes_for_stop.insert(q.bus_name);
+TransportCatalogue::TransportCatalogue(Querys data_base) {
+    for (auto& stop : data_base.stops) {
+        AddStop(stop);
+    }
+    for (auto& bus : data_base.buses) {
+        AddBus(bus);
+    }
+    for (auto& stops : data_base.range_about_stops) {
+        range_about_stops.insert(move(stops));
+    }
+}
+
+void TransportCatalogue::AddStop(Stop stop) {
+    StopInfo stop_(move(stop));
+    stops_.push_back(move(stop_));
+    string_view name = stops_.back().name_;
+    stops[name] = &stops_.back();
+}
+
+void TransportCatalogue::AddBus(Bus bus) {
+    RouteInfo route_info(bus);
+    for (auto& stop : bus.stops) {
+        route_info.stops_.push_back(stops[stop]);
+    }
+    routes_.push_back(move(route_info));
+    string_view name = routes_.back().name_;
+    routes[name] = &routes_.back();
+}
+
+tuple<int, int, int, double> TransportCatalogue::GetBusInfo(string& bus) {
+    if (routes.find(bus) != routes.end()) {
+        int stops_count = StopsCountInRoute(bus);
+        int uniq_stops_count = UniqStopsCountInRoute(bus);
+        int m_route_lenght = ComputeMeterRouteLenght(bus);
+        double coord_route_lenght = ComputeCoordRouteLenght(bus);
+        return tuple(stops_count, uniq_stops_count, m_route_lenght, m_route_lenght / coord_route_lenght);
+    }
+    else {
+        return tuple{ 0, 0, 0, 0.0 };
+    }
+}
+
+set<string> TransportCatalogue::GetStopInfo(string& stop) {
+    set<string> result;
+    if (!stops.count(stop)) {
+        result.insert("not found"s);
+        return result;
+    } else {
+        for (auto& route : routes_) {
+            for (auto& stop_ : route.stops_) {
+                if (stop_->name_ == stop) {
+                    result.insert(route.name_);
                 }
-                break;
-            case QueryType::NewStop:
-                Coordinates coord_;
-                coord_.lat = q.latitude;
-                coord_.lng = q.longitude;
-                all_stops_info[q.stop_name].coord = coord_;
-                all_stops_info[q.stop_name].range_to_close_stop_ = q.range_to_close_stop;
-                break;
-        }
-    }
-}
-
-int TransportCatalogue::StopsCountInRoute(int num) {
-    if (stops_in_route[num].is_round) {
-        return stops_in_route[num].stops_.size();
-    } else {
-        return stops_in_route[num].stops_.size() * 2 - 1;
-    }
-}
-
-int TransportCatalogue::UniqStopsCountInRoute(int num) {
-    set<string> stops;
-    for (auto stop : stops_in_route[num].stops_) {
-        stops.insert(stop);
-    }
-    return stops.size();
-}
-
-pair<int, double> TransportCatalogue::ComputeRouteRange(int num) {
-    pair<int, double> length = {0, 0};
-    if (stops_in_route[num].is_round) {
-        for (size_t i = 0; i < stops_in_route[num].stops_.size() - 1; ++i) {
-            if (all_stops_info.at(stops_in_route[num].stops_[i]).range_to_close_stop_.count(stops_in_route[num].stops_[i + 1]) != 0) {
-                length.first += all_stops_info.at(stops_in_route[num].stops_[i]).range_to_close_stop_.at(stops_in_route[num].stops_[i + 1]);
-            } else {
-                length.first += all_stops_info.at(stops_in_route[num].stops_[i + 1]).range_to_close_stop_.at(stops_in_route[num].stops_[i]);
             }
-            length.second += ComputeDistance(all_stops_info.at(stops_in_route[num].stops_[i]).coord, all_stops_info.at(stops_in_route[num].stops_[i + 1]).coord);
-        }
-    } else {
-        for (size_t i = 0; i < stops_in_route[num].stops_.size() - 1; ++i) {
-            if (all_stops_info.at(stops_in_route[num].stops_[i]).range_to_close_stop_.count(stops_in_route[num].stops_[i + 1]) != 0) {
-                length.first += all_stops_info.at(stops_in_route[num].stops_[i]).range_to_close_stop_.at(stops_in_route[num].stops_[i + 1]);
-            } else {
-                length.first += all_stops_info.at(stops_in_route[num].stops_[i + 1]).range_to_close_stop_.at(stops_in_route[num].stops_[i]);
-            }
-            length.second += ComputeDistance(all_stops_info.at(stops_in_route[num].stops_[i]).coord, all_stops_info.at(stops_in_route[num].stops_[i + 1]).coord);
-        }
-        for (size_t i = stops_in_route[num].stops_.size() - 1; i > 0; --i) {
-            if (all_stops_info.at(stops_in_route[num].stops_[i]).range_to_close_stop_.count(stops_in_route[num].stops_[i - 1]) != 0) {
-                length.first += all_stops_info.at(stops_in_route[num].stops_[i]).range_to_close_stop_.at(stops_in_route[num].stops_[i - 1]);
-            } else {
-                length.first += all_stops_info.at(stops_in_route[num].stops_[i - 1]).range_to_close_stop_.at(stops_in_route[num].stops_[i]);
-            }
-            length.second += ComputeDistance(all_stops_info.at(stops_in_route[num].stops_[i]).coord, all_stops_info.at(stops_in_route[num].stops_[i - 1]).coord);
         }
     }
-    return length;
+    if (result.empty()) {
+        result.insert("no buses"s);
+        return result;
+    }
+    return result;
 }
 
-void TransportCatalogue::PrintBusInfo(string route_number) {
-    if (find(begin(routes), end(routes), route_number) != end(routes)) {
-        int i = 0;
-        for (auto route : routes) {
-            if (route == route_number) {
-                pair<int, double> lenght = ComputeRouteRange(i);
-                cout << "Bus " << route_number << ": ";
-                cout << StopsCountInRoute(i) << " stops on route, ";
-                cout << UniqStopsCountInRoute(i) << " unique stops, ";
-                cout << lenght.first << " route length, ";
-                cout << lenght.first / lenght.second << " curvature" << endl;
+int TransportCatalogue::StopsCountInRoute(string& bus) {
+    auto route = *routes[bus];
+    if (route.is_round_) {
+        return route.stops_.size();
+    }
+    else {
+        return route.stops_.size() * 2 - 1;
+    }
+}
+
+int TransportCatalogue::UniqStopsCountInRoute(string& bus) {
+    auto route = *routes[bus];
+    unordered_set<StopInfo*> result;
+    for (const auto& stop : route.stops_) {
+        result.insert(stop);
+    }
+    return result.size();
+}
+
+int TransportCatalogue::ComputeMeterRouteLenght(string& bus) {
+    auto route = *routes[bus];
+    int result = 0;
+    if (route.is_round_) {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            if (range_about_stops.count({ route.stops_[i]->name_, route.stops_[i + 1]->name_ })) {
+                result += range_about_stops.at({ route.stops_[i]->name_, route.stops_[i + 1]->name_ });
             } else {
-                ++i;
+                result += range_about_stops.at({ route.stops_[i + 1]->name_, route.stops_[i]->name_ });
             }
         }
     } else {
-        cout << "Bus " << route_number << ": not found" << endl;
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            if (range_about_stops.count({ route.stops_[i]->name_, route.stops_[i + 1]->name_ })) {
+                result += range_about_stops.at({ route.stops_[i]->name_, route.stops_[i + 1]->name_ });
+            } else {
+                result += range_about_stops.at({ route.stops_[i + 1]->name_, route.stops_[i]->name_ });
+            }
+        }
+        for (size_t i = route.stops_.size() - 1; i > 0; --i) {
+            if (range_about_stops.count({ route.stops_[i]->name_, route.stops_[i - 1]->name_ })) {
+                result += range_about_stops.at({ route.stops_[i]->name_, route.stops_[i - 1]->name_ });
+            } else {
+                result += range_about_stops.at({ route.stops_[i - 1]->name_, route.stops_[i]->name_ });
+            }
+        }
     }
+    return result;
 }
 
-void TransportCatalogue::PrintStopInfo(string stop) {
-    if (!all_stops_info.count(stop)) {
-        cout << "Stop " << stop << ": not found" << endl;
-    } else if (all_stops_info.at(stop).routes_for_stop.empty()) {
-        cout << "Stop " << stop << ": no buses" << endl;
-    } else {
-        cout << "Stop " << stop << ": buses";
-        set<string> nums;
-        for (auto bus : all_stops_info.at(stop).routes_for_stop) {
-            nums.insert(bus);
+double TransportCatalogue::ComputeCoordRouteLenght(string& bus) {
+    auto route = *routes[bus];
+    double result = 0;
+    if (route.is_round_) {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            result += ComputeDistance(route.stops_[i]->coord, route.stops_[i + 1]->coord);
         }
-        for (auto num : nums){
-            cout << " " << num;
-        }
-        cout << endl;
     }
+    else {
+        for (size_t i = 0; i < route.stops_.size() - 1; ++i) {
+            result += ComputeDistance(route.stops_[i]->coord, route.stops_[i + 1]->coord);
+        }
+        for (size_t i = route.stops_.size() - 1; i > 0; --i) {
+            result += ComputeDistance(route.stops_[i]->coord, route.stops_[i - 1]->coord);
+        }
+    }
+    return result;
 }
