@@ -1,27 +1,27 @@
 #pragma once
 
+#include "geo.h"
+
 #include <map>
 
-using namespace std;
-
 struct Bus {
-    string name;
+    std::string name;
     bool is_round = false;
-    vector<string> stops;
+    std::vector<std::string> stops;
 };
 
 struct Stop {
-    string name;
-    double latitude = 0.0;
-    double longitude = 0.0;
+    std::string name;
+    Coordinates coord;
 };
 
 struct Querys {
-    vector<Stop> stops;
-    vector<Bus> buses;
-    map<pair<string, string>, int> range_about_stops;
+    std::vector<Stop> stops;
+    std::vector<Bus> buses;
+    std::map<std::pair<std::string, std::string>, int> range_about_stops;
 };
 
-istream& operator>>(istream& is, Querys& q);
+std::istream& operator>>(std::istream& is, Querys& q);
 
 Querys BuildDataBase();
+Querys BuildDataBase(std::istream& querys_data);
