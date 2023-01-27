@@ -1,19 +1,31 @@
 #include <sstream>
 #include <vector>
+#include <iostream>
 
 #include "input_reader.h"
 
 Querys BuildDataBase() {
     Querys q;
     int querys_count;
-    cin >> querys_count;
+    std::cin >> querys_count;
     for (int i = 0; i < querys_count; ++i) {
-        cin >> q;
+        std::cin >> q;
     }
     return q;
 }
 
-istream& operator>>(istream& is, Querys& q) {
+Querys BuildDataBase(std::istream& querys_data) {
+    Querys q;
+    int querys_count;
+    querys_data >> querys_count;
+    for (int i = 0; i < querys_count; ++i) {
+        querys_data >> q;
+    }
+    return q;
+}
+
+std::istream& operator>>(std::istream& is, Querys& q) {
+    using namespace std;
     string what_do, line;
     is >> what_do;
     if (what_do == "Bus") {
@@ -51,12 +63,12 @@ istream& operator>>(istream& is, Querys& q) {
         stop.name = parser.substr(first + 1, last - 1);
         parser.remove_prefix(last + 2);
         last = parser.find_first_of(',');
-        stop.latitude = stod(string(parser.substr(0, last)));
+        stop.coord.lat = stod(string(parser.substr(0, last)));
         parser.remove_prefix(last + 2);
         last = parser.find_first_of(' ');
         if (last != parser.npos) {
             last = parser.find_first_of(',');
-            stop.longitude = stod(string(parser.substr(0, last)));
+            stop.coord.lng = stod(string(parser.substr(0, last)));
             parser.remove_prefix(last + 2);
             do {
                 auto find_m = parser.find('m');
@@ -68,7 +80,7 @@ istream& operator>>(istream& is, Querys& q) {
             } while (last != parser.npos);
         }
         else {
-            stop.longitude = stod(string(parser.substr(0, last)));
+            stop.coord.lng = stod(string(parser.substr(0, last)));
         }
         q.stops.push_back(stop);
     }
