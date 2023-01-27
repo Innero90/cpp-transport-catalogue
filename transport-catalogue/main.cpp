@@ -6,7 +6,7 @@
 using namespace std;
 
 int main() {
-    /*istringstream querys_data{
+    istringstream querys_data{
         "Stop Tolstopaltsevo: 55.611087, 37.20829, 3900m to Marushkino\n"
         "Stop Marushkino: 55.595884, 37.209755, 9900m to Rasskazovka, 100m to Marushkino\n"
         "Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye\n"
@@ -20,7 +20,7 @@ int main() {
         "Bus 828: Biryulyovo Zapadnoye > Universam > Rossoshanskaya ulitsa > Biryulyovo Zapadnoye\n"
         "Stop Rossoshanskaya ulitsa: 55.595579, 37.605757\n"
         "Stop Prazhskaya: 55.611678, 37.603831\n"
-    };*/
+    };
 
     auto data_base = move(BuildDataBase());
     TransportCatalogue transport_catalogue(move(data_base));
