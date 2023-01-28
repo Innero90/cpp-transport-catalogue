@@ -1,9 +1,9 @@
 #include "stat_reader.h"
 
-void PrintBusInfo(const string& bus_name, tuple<int, int, int, double> result) {
-    if (get<0>(result) != 0) {
-        cout << "Bus "s << bus_name << ": "s << get<0>(result) << " stops on route, "s
-            << get<1>(result) << " unique stops, "s << get<2>(result) << " route length, "s << get<3>(result) << " curvature"s << endl;
+void PrintBusInfo(const string& bus_name, BusInfoResult result) {
+    if (result.stops_on_route != 0) {
+        cout << "Bus "s << bus_name << ": "s << result.stops_on_route << " stops on route, "s
+            << result.unique_stops << " unique stops, "s << result.route_length << " route length, "s << result.curvature << " curvature"s << endl;
     }
     else {
         cout << "Bus "s << bus_name << ": not found"s << endl;
