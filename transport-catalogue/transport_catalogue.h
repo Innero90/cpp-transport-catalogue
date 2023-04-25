@@ -1,63 +1,47 @@
 #pragma once
 
 #include <deque>
-#include <string>
-#include <vector>
+#include <optional>
 #include <set>
-#include <unordered_map>
-#include <unordered_set>
 
-#include "input_reader.h"
+#include "domain.h"
 
-using namespace std;
-
-struct StopInfo {
-    StopInfo(Stop stop) :
-        name_(stop.name) {
-        coord.lat = stop.coord.lat;
-        coord.lng = stop.coord.lng;
-    }
-
-    string name_;
-    Coordinates coord;
-};
-
-struct RouteInfo {
-    RouteInfo(Bus bus) :
-        name_(bus.name), is_round_(bus.is_round) {
-    }
-
-    string_view name_;
-    bool is_round_;
-    deque<StopInfo*> stops_;
-};
-
-struct BusInfoResult {
-    int stops_on_route = 0;
-    int unique_stops = 0;
-    int route_length = 0;
-    double curvature = 0.0;
-};
+namespace transport {
 
 class TransportCatalogue {
-public:
-    TransportCatalogue(Querys data_base);
-
-    void AddStop(Stop stop);
-    void AddBus(Bus bus);
-
-    BusInfoResult GetBusInfo(string& bus);
-    set<string> GetStopInfo(string& stop);
-
-    int GetStopsCountInRoute(string& bus);
-    int GetUniqStopsCountInRoute(string& bus);
-    int ComputeMeterRouteLenght(string& bus);
-    double ComputeCoordRouteLenght(string& bus);
-
 private:
-    deque<StopInfo> stops_;
-    unordered_map<string_view, StopInfo*> stops;
-    deque<RouteInfo> routes_;
-    unordered_map<string_view, RouteInfo*> routes;
-    map<pair<string_view, string_view>, int> range_about_stops;   //если поставить unordered_map,то ломается словарь, не понимаю почему? так же если ставить string_view ломается результат метода GetStopInfo
+    struct DistanceHasher {
+        size_t operator()(const std::pair<Stop*, Stop*>& p) const;
+
+    private:
+        std::hash<double> d_hasher_;
+    };
+    
+    std::deque<Stop> stops_;
+    std::unordered_map<std::string_view, Stop*> stopname_to_stop_;
+    
+    std::deque<Bus> buses_;
+    std::set<std::string_view> bus_names_;
+    std::unordered_map<std::string_view, BusStat> bus_stats_;
+    std::unordered_map<std::string_view, Bus*> busname_to_bus_;
+
+    std::unordered_map<std::pair<Stop*, Stop*>, int, DistanceHasher> distances_;
+
+    BusStat CalculateStat(const std::string& name) const;
+    
+public:
+    void AddStop(const parsed::Stop& stop);
+    void AddBus(const parsed::Bus& route);
+    void AddDistances(const parsed::Distances& dists);
+    
+    bool FindStop(const std::string& name) const;
+    bool FindBus(const std::string& name) const;
+
+    const std::set<std::string_view>* GetBusNames() const;
+    const Bus* GetBus(std::string_view name) const;
+    std::set<std::string_view>* GetBusesThroughStop(const std::string& name) const;
+    std::optional<BusStat> GetBusStat(const std::string& name) const;
+    unsigned int GetStopsDistance(const std::string& from, const std::string& dest) const;
 };
+
+} // transport
