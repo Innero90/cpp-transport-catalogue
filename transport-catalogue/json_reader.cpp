@@ -41,7 +41,7 @@ svg::Color JsonReader::GetColorFromNode(const json::Node& n) const {
         arr[3].AsDouble()};
 }
 
-renderer::RenderSettings JsonReader::DictToRenderSettings(const json::Dict& settings_dict) const {
+renderer::RenderSettings JsonReader::MoveDictToRenderSettings(const json::Dict& settings_dict) const {
     renderer::RenderSettings settings;
     
     settings.width = settings_dict.at("width"s).AsDouble();
@@ -71,7 +71,7 @@ renderer::RenderSettings JsonReader::DictToRenderSettings(const json::Dict& sett
     return settings;
 }
 
-parsed::Bus JsonReader::DictToBus(const json::Dict& bus_dict) const {
+parsed::Bus JsonReader::MoveDictToBus(const json::Dict& bus_dict) const {
     parsed::Bus bus;
 
     bus.name = move(const_cast<string&>(bus_dict.at("name"s).AsString()));
@@ -84,7 +84,7 @@ parsed::Bus JsonReader::DictToBus(const json::Dict& bus_dict) const {
     return bus;
 }
 
-std::pair<parsed::Stop, parsed::Distances> JsonReader::DictToStopDists(const json::Dict& stop_dict) const {
+std::pair<parsed::Stop, parsed::Distances> JsonReader::MoveDictToStopDists(const json::Dict& stop_dict) const {
     parsed::Stop p_s;
     parsed::Distances p_d;
 
