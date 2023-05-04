@@ -160,7 +160,7 @@ Node LoadDict(istream& input) {
     }
     
     if (c !=  '}') {
-        throw ParsingError{"no closing bracket in map"s};
+        throw ParsingError{"no closing bracket in dict"s};
     }
 
     return Node(move(result));
@@ -228,7 +228,7 @@ void PrintArray(const Array& arr, std::ostream& output,
     output << ']';
 }
     
-void PrintMap(const Dict& dict, std::ostream& output, 
+void PrintDict(const Dict& dict, std::ostream& output, 
     int indent_size, int indent_step) {
     
     output << "{\n"s;
@@ -262,7 +262,7 @@ void PrintMap(const Dict& dict, std::ostream& output,
     output << '}';
 }
 
-}
+}  // namespace
 
 bool Node::IsNull() const {
     return holds_alternative<nullptr_t>(*this);
@@ -289,7 +289,7 @@ bool Node::IsArray() const {
     return holds_alternative<Array>(*this);
 }
     
-bool Node::IsMap() const {
+bool Node::IsDict() const {
     return holds_alternative<Dict>(*this);
 }
     
@@ -304,9 +304,9 @@ const Array& Node::AsArray() const {
     return  get<Array>(*this);
 }
 
-const Dict& Node::AsMap() const {
-     if (!IsMap()) {
-        throw  logic_error("not a map"s);
+const Dict& Node::AsDict() const {
+     if (!IsDict()) {
+        throw  logic_error("not a dict"s);
     }
     return get<Dict>(*this);
 }
@@ -346,6 +346,15 @@ const string& Node::AsString() const {
     return get<string>(*this);
 }
 
+bool Node::operator==(const Node& rhs ) const {
+    return static_cast<const JsonValue&>(*this) 
+        == static_cast<const JsonValue&>(rhs);
+}
+
+bool Node::operator!=(const Node& rhs ) const {
+    return !(*this == rhs);
+}
+
 Document::Document(Node root)
     : root_(move(root)) {
 }
@@ -356,6 +365,14 @@ const Node& Document::GetRoot() const {
 
 Document Load(istream& input) {
     return Document{LoadNode(input)};
+}
+
+bool Document::operator==(const Document& rhs ) const {
+    return root_ == rhs.root_;
+}
+
+bool Document::operator!=(const Document& rhs ) const {
+    return !(*this == rhs);
 }
         
 void Print(const Document& doc, std::ostream& output, 
@@ -376,10 +393,10 @@ void Print(const Document& doc, std::ostream& output,
     } else if (root.IsArray()) {
         const Array& arr = root.AsArray();
         PrintArray(arr, output, indent_size, indent_step);
-    } else if (root.IsMap()) {
-        const Dict& dict = root.AsMap();
-        PrintMap(dict, output, indent_size, indent_step);
+    } else if (root.IsDict()) {
+        const Dict& dict = root.AsDict();
+        PrintDict(dict, output, indent_size, indent_step);
     }
 }
 
-}
+}  // namespace json
