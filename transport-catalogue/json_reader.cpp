@@ -9,15 +9,15 @@ JsonReader::JsonReader(std::istream& input) : json_doc_(json::Load(input)) {
 }
 
 const json::Array& JsonReader::GetBaseRequests() const {
-    return json_doc_.GetRoot().AsMap().at("base_requests"s).AsArray();
+    return json_doc_.GetRoot().AsDict().at("base_requests"s).AsArray();
 }
 
 const json::Dict& JsonReader::GetRenderSettings() const {
-    return json_doc_.GetRoot().AsMap().at("render_settings"s).AsMap();
+    return json_doc_.GetRoot().AsDict().at("render_settings"s).AsDict();
 }
 
 const json::Array& JsonReader::GetStatRequests() const {
-    return json_doc_.GetRoot().AsMap().at("stat_requests"s).AsArray();
+    return json_doc_.GetRoot().AsDict().at("stat_requests"s).AsArray();
 }
 
 svg::Color JsonReader::GetColorFromNode(const json::Node& n) const {
@@ -41,7 +41,7 @@ svg::Color JsonReader::GetColorFromNode(const json::Node& n) const {
         arr[3].AsDouble()};
 }
 
-renderer::RenderSettings JsonReader::MoveDictToRenderSettings(const json::Dict& settings_dict) const {
+renderer::RenderSettings JsonReader::DictToRenderSettings(const json::Dict& settings_dict) const {
     renderer::RenderSettings settings;
     
     settings.width = settings_dict.at("width"s).AsDouble();
@@ -71,7 +71,7 @@ renderer::RenderSettings JsonReader::MoveDictToRenderSettings(const json::Dict& 
     return settings;
 }
 
-parsed::Bus JsonReader::MoveDictToBus(const json::Dict& bus_dict) const {
+parsed::Bus JsonReader::DictToBus(const json::Dict& bus_dict) const {
     parsed::Bus bus;
 
     bus.name = move(const_cast<string&>(bus_dict.at("name"s).AsString()));
@@ -84,7 +84,7 @@ parsed::Bus JsonReader::MoveDictToBus(const json::Dict& bus_dict) const {
     return bus;
 }
 
-std::pair<parsed::Stop, parsed::Distances> JsonReader::MoveDictToStopDists(const json::Dict& stop_dict) const {
+std::pair<parsed::Stop, parsed::Distances> JsonReader::DictToStopDists(const json::Dict& stop_dict) const {
     parsed::Stop p_s;
     parsed::Distances p_d;
 
@@ -94,7 +94,7 @@ std::pair<parsed::Stop, parsed::Distances> JsonReader::MoveDictToStopDists(const
     p_s.lat = stop_dict.at("latitude"s).AsDouble();
     p_s.lng = stop_dict.at("longitude"s).AsDouble();
 
-    for (const auto& [to, dist]: stop_dict.at("road_distances"s).AsMap()) {
+    for (const auto& [to, dist]: stop_dict.at("road_distances"s).AsDict()) {
         p_d.d_map.emplace(move(const_cast<string&>(to)), dist.AsInt());
     }
 
@@ -141,9 +141,6 @@ renderer::MapRenderer JsonReader::GetRenderer(const TransportCatalogue& catalogu
     return map_renderer;
 }
 
-
-// Оставил наполенние каталога в JsonReader потому что иначе пришлось бы переносить всю логику разбора json запросов
-// в RequestHandler, а он этим по идее не должен заниматься
 void JsonReader::FillCatalogue(TransportCatalogue& catalogue) const {
     vector<parsed::Bus> add_bus_deferred;
     vector<parsed::Distances> add_dists_deferred;
@@ -152,7 +149,7 @@ void JsonReader::FillCatalogue(TransportCatalogue& catalogue) const {
 
     for (const auto& item : requests) {
 
-        const auto& dict = item.AsMap();
+        const auto& dict = item.AsDict();
         
         const string& type = dict.at("type"s).AsString();
 
@@ -180,10 +177,6 @@ void JsonReader::FillCatalogue(TransportCatalogue& catalogue) const {
     }
 }
 
-
-// перенёс логику формирования json массива в RequestHandler, так как если бы он  выдавал не json, а свои структуры,
-// то пришлось бы ещё раз проверять тип возвращённого значения, для формирования нужного элемента json массива
-// в этой функции, а это вызвыло бы дублирование кода
 void JsonReader::PrintJsonResponse(const RequestHandler& handler, std::ostream& out) const {
     const json::Array& requests = GetStatRequests();
 
