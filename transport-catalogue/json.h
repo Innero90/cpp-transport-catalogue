@@ -24,7 +24,7 @@ public:
     using JsonValue::JsonValue;
      
     const Array& AsArray() const;
-    const Dict& AsMap() const;
+    const Dict& AsDict() const;
     const std::string& AsString() const;
     int AsInt() const;
     double AsDouble() const;
@@ -37,16 +37,10 @@ public:
     bool IsString() const;
     bool IsNull() const;
     bool IsArray() const;
-    bool IsMap() const;
+    bool IsDict() const;
     
-    bool operator==(Node const& rhs ) const {
-        return static_cast<const JsonValue&>(*this) 
-            == static_cast<const JsonValue&>(rhs);
-    }
-    
-    bool operator!=(Node const & rhs ) const {
-        return !(*this == rhs);
-    }
+    bool operator==(const Node& rhs ) const;
+    bool operator!=(const Node& rhs ) const;
 };
     
 class Document {
@@ -55,13 +49,8 @@ public:
 
     const Node& GetRoot() const;
     
-    bool operator==(Document const & rhs ) const {
-        return root_ == rhs.root_;
-    }
-    
-    bool operator!=(Document const & rhs ) const {
-        return !(*this == rhs);
-    }
+    bool operator==(const Document& rhs ) const;
+    bool operator!=(const Document& rhs ) const;
 
 private:
     Node root_;
@@ -72,4 +61,4 @@ Document Load(std::istream& input);
 void Print(const Document& doc, std::ostream& output, 
     int indent_size = 2, int indent_step = 1);
 
-}
+}  // namespace json
