@@ -21,11 +21,11 @@ private:
 
     svg::Color GetColorFromNode(const json::Node& n) const;
 
-    renderer::RenderSettings MoveDictToRenderSettings(const json::Dict& settings_dict) const;
+    renderer::RenderSettings DictToRenderSettings(const json::Dict& settings_dict) const;
 
-    parsed::Bus MoveDictToBus(const json::Dict& bus_dict) const;
+    parsed::Bus DictToBus(const json::Dict& bus_dict) const;
 
-    std::pair<parsed::Stop, parsed::Distances> MoveDictToStopDists(const json::Dict& stop_dict) const;
+    std::pair<parsed::Stop, parsed::Distances> DictToStopDists(const json::Dict& stop_dict) const;
 
 public:
     JsonReader(std::istream& input);
