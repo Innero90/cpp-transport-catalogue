@@ -1,224 +1,268 @@
+/*
+ * Назначение модуля: код, отвечающий за визуализацию карты маршрутов в формате SVG.
+ */
+
 #include "map_renderer.h"
 
-using namespace std;
+namespace map_renderer
+{
 
-namespace transport {
+// ---------------SphereProjector-------------------------
 
-namespace renderer {
+bool IsZero(const double value)
+{
+	return (std::abs(value) < EPSILON);
+}
 
-namespace map_objects {
+svg::Point SphereProjector::operator()(geo::Coordinates coords) const
+{
+	return { (coords.lng - min_lon_) * zoom_coeff_ + padding_,
+			(max_lat_ - coords.lat) * zoom_coeff_ + padding_ };
+}
 
-RouteLine::RouteLine(const Bus* bus, 
-    const SphereProjector& proj, 
-    svg::Color color, 
-    double stroke_width) 
-    
-    : bus_(bus), proj_(proj), color_(color), stroke_width_(stroke_width) {
+// -----Классы фигур, реализующие интерфейс Drawable----
+
+RouteLine::RouteLine(const std::vector<svg::Point>& stop_points,
+					 const svg::Color& stroke_color,
+					 const RendererSettings& renderer_settings) :
+	stop_points_(stop_points), stroke_color_(stroke_color), renderer_settings_(renderer_settings)
+{}
+
+void RouteLine::Draw(svg::ObjectContainer& container) const
+{
+	svg::Polyline polyline;
+	for (const auto& point : stop_points_)
+	{
+		polyline.AddPoint(point);
+	}
+	polyline.SetStrokeColor(stroke_color_);                 // StrokeColor задается в конструкторе
+	polyline.SetFillColor(svg::NoneColor);                  // FillColor должен быть none
+	polyline.SetStrokeWidth(renderer_settings_.line_width); // StrokeWidth должна быть = настройке line_width
+	polyline.SetStrokeLineCap(svg::StrokeLineCap::ROUND);   // StrokeLineCap должна быть Round
+	polyline.SetStrokeLineJoin(svg::StrokeLineJoin::ROUND); // StrokeLineJoin должна быть Round
+	container.Add(polyline);
+}
+
+TextLabel::TextLabel(const svg::Point& label_point,
+					 const std::string& text,
+					 const svg::Color& fill_fore_color,
+					 const RendererSettings& renderer_settings,
+					 const bool& is_stop) :
+	label_point_(label_point), text_(text), fill_fore_color_(fill_fore_color),
+	renderer_settings_(renderer_settings), is_stop_(is_stop)
+{}
+
+void TextLabel::Draw(svg::ObjectContainer& container) const
+{
+	using namespace std::literals;
+
+	// Алгоритм:
+	// 1. Формируем текст переднего плана
+	// 2. На его основе формируем текст заднего плана (фон)
+	// 3. Добавляем в контейнер в обратном порядке
+
+	svg::Text fore_text;   // Текст переднего плана
+
+	fore_text.SetPosition(label_point_);
+	fore_text.SetFontFamily("Verdana"s);
+	fore_text.SetData(text_);
+
+	// Отдельная обработка меток маршрутов и остановок
+	if (is_stop_)
+	{
+		// Параметры, уникальные для метки остановки
+		fore_text.SetOffset(renderer_settings_.stop_label_offset);
+		fore_text.SetFontSize(renderer_settings_.stop_label_font_size);
+		fore_text.SetFillColor("black"s);
+	}
+	else
+	{
+		// Параметры, уникальные для метки маршрута
+		fore_text.SetOffset(renderer_settings_.bus_label_offset);
+		fore_text.SetFontSize(renderer_settings_.bus_label_font_size);
+		fore_text.SetFontWeight("bold"s);
+		fore_text.SetFillColor(fill_fore_color_);
+	}
+
+	// Текст заднего плана (фон) создаем на основе текста переднего плана
+	svg::Text back_text = fore_text;
+
+	// Параметры, уникальные для фонового текста
+	back_text.SetFillColor(renderer_settings_.underlayer_color);
+	back_text.SetStrokeColor(renderer_settings_.underlayer_color);
+	back_text.SetStrokeWidth(renderer_settings_.underlayer_width);
+	back_text.SetStrokeLineCap(svg::StrokeLineCap::ROUND);
+	back_text.SetStrokeLineJoin(svg::StrokeLineJoin::ROUND);
+
+	container.Add(back_text);
+	container.Add(fore_text);
+}
+
+StopIcon::StopIcon(const svg::Point& label_point, const RendererSettings& renderer_settings) :
+	label_point_(label_point), renderer_settings_(renderer_settings)
+{}
+
+void StopIcon::Draw(svg::ObjectContainer& container) const
+{
+	using namespace std::literals;
+
+	svg::Circle icon;
+	icon.SetCenter(label_point_);
+	icon.SetRadius(renderer_settings_.stop_radius);
+	icon.SetFillColor("white"s);
+
+	container.Add(icon);
+}
+
+
+// -----------------MapRenderer-------------------------
+
+void MapRenderer::ApplyRendererSettings(RendererSettings settings)
+{
+	settings_ = settings;
+}
+
+RendererSettings MapRenderer::GetRendererSettings() const
+{
+	return settings_;
+}
+
+
+void MapRenderer::AddRouteLinesToRender(std::vector<std::unique_ptr<svg::Drawable>>& picture_,
+										SphereProjector& sp,
+										std::map<const std::string, transport_catalogue::RendererData>& routes_to_render)
+{
+	for (const auto& [name, data] : routes_to_render)
+	{
+		std::vector<svg::Point> points;  // Вектор нормализованных координат
+		for (const auto& stop : data.stop_coords)
+		{
+			points.push_back(sp(stop));
+		}
+		// формируем unique_ptr
+		picture_.emplace_back(std::make_unique<RouteLine>(RouteLine{ points, GetColorFromPallete() , settings_ }));
+	}
 
 }
 
-void RouteLine::Draw(svg::ObjectContainer& container) const {
-    svg::Polyline pol;
 
-    for (const auto stop : bus_->bus_stops) {
-         pol.AddPoint(proj_(stop->coordinates));
-    }
-
-    if (!bus_->circular && bus_->bus_stops.size() > 1) {
-        for (int i = bus_->bus_stops.size() - 2; i >= 0; --i) {
-            pol.AddPoint(proj_(bus_->bus_stops[i]->coordinates));
-        }
-    } 
-    
-    pol.SetFillColor(svg::NoneColor)
-       .SetStrokeColor(color_)
-       .SetStrokeWidth(stroke_width_)
-       .SetStrokeLineCap(svg::StrokeLineCap::ROUND)
-       .SetStrokeLineJoin(svg::StrokeLineJoin::ROUND);
-
-    container.Add(pol);
+void MapRenderer::AddRouteLabelsToRender(std::vector<std::unique_ptr<svg::Drawable>>& picture_,
+										 SphereProjector& sp,
+										 std::map<const std::string, transport_catalogue::RendererData>& routes_to_render)
+{
+	ResetPallette();  // Сбрасываем текущий цвет палитры, начинаем с первого
+	for (const auto& [name, data] : routes_to_render)
+	{
+		// Получаем цвет текущего маршрута
+		svg::Color current_line_color = GetColorFromPallete();
+		// Выводим первую метку маршрута (стартовую)
+		picture_.emplace_back(std::make_unique<TextLabel>(TextLabel{ sp(data.stop_coords[0]),
+														  name,
+														  current_line_color,
+														  settings_,
+														  false }));
+		// Если маршрут НЕ кольцевой и у него больше 1 остановки, выводим метку конечной остановки
+		if ((!data.is_circular) && (data.stop_coords.size() > 1))
+		{
+			// Учитываем, что для некольцевых маршрутов координаты хранятся туда и обратно (А,В,А) и всегда нечетны
+			// Выводим, если начальная и конечная точки не совпадают А <> В
+			if (data.stop_coords[0] != data.stop_coords[(data.stop_coords.size() + 1) / 2 - 1])
+			{
+				// Выводим вторую метку маршрута (конечную)
+				picture_.emplace_back(std::make_unique<TextLabel>(TextLabel{ sp(data.stop_coords[(data.stop_coords.size() + 1) / 2 - 1]),
+																  name,
+																  current_line_color,
+																  settings_,
+																  false }));
+			}
+		}
+	}
 }
 
-BusLabel::BusLabel(const Bus* bus,
-    const SphereProjector& proj,  
-    const RenderSettings& settings,
-    int color_idx) 
-    
-    : bus_(bus), proj_(proj), settings_(settings), color_idx_(color_idx) {
 
+void MapRenderer::AddStopLabelsToRender(std::vector<std::unique_ptr<svg::Drawable>>& picture_,
+										SphereProjector& sp,
+										std::map<std::string_view, geo::Coordinates> all_unique_stops)
+{
+	for (const auto& stop : all_unique_stops)
+	{
+		// формируем unique_ptr
+		picture_.emplace_back(std::make_unique<StopIcon>(StopIcon{ sp(stop.second), settings_ }));
+	}
 }
 
-void BusLabel::Draw(svg::ObjectContainer& container) const {
-    svg::Text base;
-    
-    base.SetPosition(proj_(bus_->bus_stops.front()->coordinates))
-        .SetOffset(settings_.bus_label_offset)
-        .SetFontSize(settings_.bus_label_font_size)
-        .SetFontFamily("Verdana"s)
-        .SetFontWeight("bold"s)
-        .SetData(bus_->name);
-    
-    svg::Text under = base;
-    svg::Text actual = move(base);
-       
-    under.SetFillColor(settings_.underlayer_color)
-            .SetStrokeColor(settings_.underlayer_color)
-            .SetStrokeWidth(settings_.underlayer_width)
-            .SetStrokeLineCap(svg::StrokeLineCap::ROUND)
-            .SetStrokeLineJoin(svg::StrokeLineJoin::ROUND);
 
-    actual.SetFillColor(settings_.color_palette[color_idx_ % settings_.color_palette.size()]);
+void MapRenderer::AddStopIconsToRender(std::vector<std::unique_ptr<svg::Drawable>>& picture_,
+									   SphereProjector& sp,
+									   std::map<std::string_view, geo::Coordinates> all_unique_stops)
+{
+	using namespace std::literals;
 
-    container.Add(under);
-    container.Add(actual);
-
-    if (!bus_->circular && bus_->bus_stops.front() != bus_->bus_stops.back()) {
-        under.SetPosition(proj_(bus_->bus_stops.back()->coordinates));
-        actual.SetPosition(proj_(bus_->bus_stops.back()->coordinates));
-
-        container.Add(under);
-        container.Add(actual);
-    }
+	for (const auto& stop : all_unique_stops)
+	{
+		// формируем unique_ptr
+		picture_.emplace_back(std::make_unique<TextLabel>(TextLabel{ sp(stop.second),
+														  std::string(stop.first),
+														  "black"s,
+														  settings_,
+														  true }));
+	}
 }
 
-StopSymbols::StopSymbols(const std::vector<const Stop*>& stops,
-        const SphereProjector& proj,  
-        
-        double stop_radius) : stops_(stops), proj_(proj), stop_radius_(stop_radius) {
+
+svg::Document MapRenderer::RenderMap(std::map<const std::string, transport_catalogue::RendererData>& routes_to_render)
+{
+	std::unordered_set<geo::Coordinates, geo::CoordinatesHasher> all_coords;    // Кэш координат для калибровки
+	std::map<std::string_view, geo::Coordinates> all_unique_stops;              // Кэш уникальных остановок (сортировка по имени)
+
+	// 1. Нормализуем координаты для переданных в рендерер точек (только непустые маршруты)
+	for (const auto& [name, data] : routes_to_render)
+	{
+		for (size_t i = 0; i < data.stop_coords.size(); ++i)
+		{
+			all_coords.insert(data.stop_coords[i]);
+			all_unique_stops.insert(make_pair(data.stop_names[i], data.stop_coords[i]));
+		}
+	}
+	// Пропускаем через проектор ВСЕ координаты и получаем поправочный коэффициент
+	SphereProjector sp{ std::begin(all_coords), std::end(all_coords),
+		settings_.width, settings_.height, settings_.padding };
+
+	// 2. Добавляем в контейнер Drawable-объекты, используя нормализованные координаты
+	std::vector<std::unique_ptr<svg::Drawable>> picture_;   // Контейнер Drawable-объектов
+	// 2.1 Линии маршрутов
+	AddRouteLinesToRender(picture_, sp, routes_to_render);
+	// 2.2 Метки маршрутов
+	AddRouteLabelsToRender(picture_, sp, routes_to_render);
+	// 2.3 Метки остановок (только те, через которые проходят маршруты)
+	//      (очередность - лексикографическое возрастание)
+	AddStopLabelsToRender(picture_, sp, all_unique_stops);
+	// 2.4 Метки остановок (очередность - лексикографическое возрастание)
+	AddStopIconsToRender(picture_, sp, all_unique_stops);
+
+	// 3. Вызываем Draw() по очереди для всех элеметов контейнера, формируя svg::Document
+	//    из svg-примитивов
+	svg::Document map;
+	DrawPicture(picture_, map);
+
+	// Тут можно вручную добавить svg-примитивы прямо к map, если необходимо
+
+	return map;  // Document.Render() будет вызывать уже метод-получатель
 }
 
-void StopSymbols::Draw(svg::ObjectContainer& container) const {
-    for (const auto stop : stops_) {
-        svg::Circle sym;
-
-        sym.SetCenter(proj_(stop->coordinates))
-           .SetRadius(stop_radius_)
-           .SetFillColor("white"s);
-
-        container.Add(sym);
-    }
+const svg::Color MapRenderer::GetColorFromPallete()
+{
+	if (pallette_item_ == settings_.color_palette.size())
+	{
+		pallette_item_ = 0;
+	}
+	return settings_.color_palette[pallette_item_++];
 }
 
-StopLabels::StopLabels(const std::vector<const Stop*>& stops,
-        const SphereProjector& proj,  
-        const RenderSettings& settings)
-
-        : stops_(stops), proj_(proj), settings_(settings) {
-
+void MapRenderer::ResetPallette()
+{
+	pallette_item_ = 0;
 }
 
-void StopLabels::Draw(svg::ObjectContainer& container) const {
-    svg::Text base;
 
-    base.SetOffset(settings_.stop_label_offset)
-        .SetFontSize(settings_.stop_label_font_size)
-        .SetFontFamily("Verdana"s);
-    
-    svg::Text under = base;
-    svg::Text actual = move(base);
-    
-    under.SetFillColor(settings_.underlayer_color)
-         .SetStrokeColor(settings_.underlayer_color)
-         .SetStrokeWidth(settings_.underlayer_width)
-         .SetStrokeLineCap(svg::StrokeLineCap::ROUND)
-         .SetStrokeLineJoin(svg::StrokeLineJoin::ROUND);
-
-    actual.SetFillColor("black"s);
-         
-    for (const auto stop : stops_) {
-        under.SetPosition(proj_(stop->coordinates))
-             .SetData(stop->name);
-
-        actual.SetPosition(proj_(stop->coordinates))
-              .SetData(stop->name);
-
-        container.Add(under);
-        container.Add(actual);
-    }
 }
-
-} // map_objects
-
-MapRenderer::MapRenderer(SphereProjector proj, 
-        RenderSettings settings, 
-        vector<const Bus*> buses, 
-        vector<const Stop*> stops)
-
-    :  proj_(proj), settings_(settings), buses_(buses), stops_(stops) {
-}
-
-void MapRenderer::AddLinesToSvg() {
-    color_index_ = 0;
-
-    for (const auto bus : buses_) {
-        
-        if (bus->bus_stops.size() == 0) {
-            continue;
-        }
-
-        map_objects::RouteLine line{
-            bus, 
-            proj_,
-            settings_.color_palette[color_index_ % settings_.color_palette.size()], 
-            settings_.line_width};
-
-        line.Draw(svg_doc_);
-
-        ++color_index_;
-    }
-}
-
-void MapRenderer::AddBusLabelsToSvg() {
-    color_index_ = 0;
-
-    for (const auto bus : buses_) {
-        if (bus->bus_stops.size() == 0) {
-            continue;
-        }
-
-        map_objects::BusLabel label{
-            bus, 
-            proj_,
-            settings_,
-            color_index_};
-
-        label.Draw(svg_doc_);
-
-        ++color_index_;
-    }
-}
-
-void MapRenderer::AddStopSymToSvg() {
-        if (stops_.size() == 0) {
-            return;
-        }
-
-        map_objects::StopSymbols syms{
-            stops_, 
-            proj_,
-            settings_.stop_radius};
-
-        syms.Draw(svg_doc_);
-}
-
-void MapRenderer::AddStopLabelsToSvg() {
-        if (stops_.size() == 0) {
-            return;
-        }
-
-        map_objects::StopLabels labels{
-            stops_,
-            proj_,
-            settings_
-        };
-
-        labels.Draw(svg_doc_);
-}
-
-const svg::Document& MapRenderer::GetSvgDoc() const {
-    return svg_doc_;
-}
-
-} // renderer
-
-} // transport
