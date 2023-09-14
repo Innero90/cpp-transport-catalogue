@@ -1,124 +1,91 @@
-#include <sstream>
+/*
+ * Назначение модуля: обработчик запросов к базе, содержащего логику,
+ * которую не хотелось бы помещать ни в transport_catalogue, ни в json reader.
+ *
+ *    request_handler - интерфейс("Фасад) транспортного справочника (двоичные данные)
+ *        json_reader - интерфейс работы с данными формата json + добавление данных
+ */
 
 #include "request_handler.h"
 
-/*
- * Здесь можно было бы разместить код обработчика запросов к базе, содержащего логику, которую не
- * хотелось бы помещать ни в transport_catalogue, ни в json reader.
- *
- * Если вы затрудняетесь выбрать, что можно было бы поместить в этот файл,
- * можете оставить его пустым.
- */
+ // Функции по обработке string_view
+namespace detail
+{
 
-using namespace std;
+std::pair<std::string_view, std::string_view> Split(std::string_view line, char by, int count)
+{
+	size_t pos = line.find(by);
+	for (int i = 1; (i < count) && (pos != line.npos); ++i)
+	{
+		pos = line.find(by, pos + 1);
+	}
+	// Substr может принимать на вход любые значения сдвига, включая npos (возврат всей строки)
+	std::string_view left = line.substr(0, pos);
 
-namespace transport {
-
- RequestHandler::RequestHandler(const TransportCatalogue& db, renderer::MapRenderer& renderer) 
-    : db_(db), renderer_(renderer) {
-
+	// Если символ-разделитель был найден...
+	if (pos < line.size() && pos + 1 < line.size())
+	{
+		// ...возвращаем подстроки без разделителя
+		return { left, line.substr(pos + 1) };
+	}
+	else
+	{
+		// ...иначе все возвращаем в первой строке и пустую вторую
+		return { left, std::string_view() };
+	}
 }
 
-optional<BusStat> RequestHandler::GetBusStat(const string& bus_name) const {
-    return db_.GetBusStat(bus_name);
+std::string_view Lstrip(std::string_view line)
+{
+	// Пока строка не пуста и первый символ не пробел...
+	while (!line.empty() && std::isspace(line[0]))
+	{
+		// ...удаляем первый символ
+		line.remove_prefix(1);
+	}
+	return line;
 }
 
-const set<string_view>* RequestHandler::GetBusesThroughStop(const string& stop_name) const {
-    return db_.GetBusesThroughStop(stop_name);
+std::string_view Rstrip(std::string_view line)
+{
+	// Для ускорения запомним длину строки в локальной переменной
+	size_t line_size = line.size();
+	// Пока строка не пуста и последний символ не пробел...
+	while (!line.empty() && std::isspace(line[line_size - 1]))
+	{
+		// ...удаляем последний символ
+		line.remove_suffix(1);
+		--line_size;
+	}
+	return line;
 }
 
-const svg::Document& RequestHandler::RenderMap() const {
-    renderer_.AddLinesToSvg();
-    renderer_.AddBusLabelsToSvg();
-    renderer_.AddStopSymToSvg();
-    renderer_.AddStopLabelsToSvg();
-
-    return renderer_.GetSvgDoc();
+std::string_view TrimString(std::string_view line)
+{
+	return Rstrip(Lstrip(line));
+}
 }
 
-json::Document RequestHandler::GetJsonResponse(const json::Array& requests) const {
-    auto response_builder = json::Builder{};
-    
-    auto arr_ctx = response_builder.StartArray();
-    
-    for (const auto& item : requests) {
+namespace transport_catalogue
+{
 
-        const auto& dict = item.AsDict();
-
-        int id = dict.at("id"s).AsInt();
-        const string& type = dict.at("type"s).AsString();
-
-        if (type == "Bus"s) {
-            const string& name = dict.at("name"s).AsString();
-            const auto bus_stat_opt = GetBusStat(name);
-
-            if (!bus_stat_opt) {     
-                arr_ctx.StartDict()
-                    .Key("request_id"s)
-                    .Value(id)
-                    .Key("error_message"s)
-                    .Value("not found"s)
-                    .EndDict();
-                continue;
-            }
-
-            const auto& bus_stat = bus_stat_opt.value();
-
-            arr_ctx.StartDict()
-                .Key("request_id"s)
-                .Value(id)
-                .Key("curvature"s)
-                .Value(bus_stat.curvature)
-                .Key("stop_count"s)
-                .Value(bus_stat.all_stops)
-                .Key("unique_stop_count"s)
-                .Value(bus_stat.unique_stops)
-                .Key("route_length"s)
-                .Value(static_cast<int>(bus_stat.length))
-                .EndDict();
-        } else if (type == "Stop"s) {
-            const string& name = dict.at("name"s).AsString();
-            auto stop_buses = GetBusesThroughStop(name);
-
-            if (!stop_buses) {
-                arr_ctx.StartDict()
-                    .Key("request_id"s)
-                    .Value(id)
-                    .Key("error_message"s)
-                    .Value("not found"s)
-                    .EndDict();
-                continue;
-            }
-            
-            arr_ctx.StartDict()
-                .Key("request_id"s)
-                .Value(id)
-                .Key("buses"s)
-                .StartArray();
-
-            for (string_view bus: *stop_buses) {
-                arr_ctx.Value(string(bus));
-            }
-            
-            arr_ctx.EndArray().EndDict();        
-        } else if (type == "Map"s) {
-            stringstream map_string;
-
-            const auto& svg_doc = RenderMap();
-            svg_doc.Render(map_string);
-                 
-            arr_ctx.StartDict()
-                .Key("request_id"s)
-                .Value(id)
-                .Key("map"s)
-                .Value(map_string.str())
-                .EndDict();
-        } else {
-            throw invalid_argument("wrong query to catalogue"s);
-        }
-    }
-
-    return json::Document(arr_ctx.EndArray().Build());
+const std::optional<RouteStatPtr> RequestHandler::GetRouteInfo(const std::string_view& bus_name) const
+{
+	return tc_.GetRouteInfo(bus_name);
 }
 
-} // transport
+const std::optional<StopStatPtr> RequestHandler::GetBusesForStop(const std::string_view& stop_name) const
+{
+	return tc_.GetBusesForStopInfo(stop_name);
+}
+
+svg::Document RequestHandler::GetMapRender() const
+{
+	std::map<const std::string, transport_catalogue::RendererData> all_routes;
+	// Получаем данные обо всех маршрутах (через std::move)
+	tc_.GetAllRoutes(all_routes);
+	// Передаем ссылку на словарь в рендерер
+	return mr_.RenderMap(all_routes);
+}
+
+}
